@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+
+<head>
+
+    <meta charset="utf-8">
+
+
+    <!-- Load d3.js -->
+    <script src="js/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="css/colorbrewer.css">
+    <link rel="stylesheet" href="css/style.css">
+
+    <style>
+        #sidebar {
+            display: flex;
+        }
+
+        .highlighted {
+            stroke: red;
+            stroke-width: 5;
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ddd;
+            padding: 5px;
+            pointer-events: none;
+            opacity: 0;
+        }
+
+        #container {
+            text-align: center;
+        }
+
+        #my_dataviz {
+            display: inline-block;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        /* Create two equal columns that floats next to each other */
+        .column {
+            float: left;
+            width: 50%;
+            padding: 10px;
+            height: 300px;
+            /* Should be removed. Only for demonstration */
+        }
+
+        /* Clear floats after the columns */
+        .row:after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+    </style>
+</head>
+
+<body style="text-align: center;">
+
+    <h1 style="text-align: center;">Dashboard</h1>
+    <div class="row">
+        <div class="column">
+            <button type="button" onclick="changeMap()" id="btnVue">Voir les régions</button>
+            <select id="departmentList"></select>
+            <select id="regionList" style="display: none;"></select>
+
+            <!-- Create a div where the graph will take place -->
+            <div id="mapDpt" style="display: block;"></div>
+            <div id="mapReg" style="display: none;"></div>
+
+            <svg width="800" height="600">
+                <text x="400" y="30" text-anchor="middle" font-size="24px" fill="black">Répartition des
+                    prestations</text>
+                <g transform="translate(400, 300)" id="pieChart"></g>
+                <g transform="translate(600, 100)" id="legend"></g>
+            </svg>
+        </div>
+        <div class="column">
+            <div id="container">
+
+                <!-- Create a div where the graph will take place -->
+                <div id="my_dataviz"></div>
+                <h3>Nombre de prestations par heure</h3>
+            </div>
+            <br><br><br><br>
+            <div>
+
+                <button onclick="sortByDescription()">Sort by description</button>
+
+                <button onclick="sortByCount()">Sort by count</button>
+
+                <button onclick="sortBySum()">Sort by sum</button>
+
+            </div>
+
+            <div id="content">
+
+            </div>
+        </div>
+    </div>
+    <script>
+
+        let prestations;
+        let prestationsDescriptionSort = "down";
+        let prestationsCountSort = "down";
+        let prestationsSumSort = "down";
+
+
+        function sortByDescription() {
+            if (prestationsDescriptionSort === "down") {
+                prestations.sort((a, b) => d3.ascending(a.description, b.description));
+                prestationsDescriptionSort = "up";
+            } else {
+                prestations.sort((a, b) => d3.descending(a.description, b.description));
+                prestationsDescriptionSort = "down";
+            }
+            redrawPrestations();
+        }
+
+
+        function sortByCount() {
+            if (prestationsCountSort === "down") {
+                prestations.sort((a, b) => d3.ascending(a.count, b.count));
+                prestationsCountSort = "up";
+            } else {
+                prestations.sort((a, b) => d3.descending(a.count, b.count));
+                prestationsCountSort = "down";
+            }
+            redrawPrestations();
+        }
+
+
+        function sortBySum() {
+
+            if (prestationsSumSort === "down") {
+                prestations.sort((a, b) => d3.ascending(a.sum, b.sum));
+                prestationsSumSort = "up";
+
+            } else {
+                prestations.sort((a, b) => d3.descending(a.sum, b.sum));
+                prestationsSumSort = "down";
+            }
+            redrawPrestations();
+        }
+
+
+        function aggregateData2(data) {
+
+            const aggregated = {};
+            data.forEach(prestation => {
+
+                const { description, count, sum } = prestation;
+
+                if (aggregated[description]) {
+                    aggregated[description].count += count;
+                    aggregated[description].sum += sum;
+                } else {
+                    aggregated[description] = { description, count, sum };
+                }
+            });
+            return Object.values(aggregated);
+
+        }
+
+
+        function redrawPrestations() {
+
+            const content = d3.select("#content");
+            content.selectAll("*").remove();
+
+            const prestationDivs = content.selectAll(".prestation")
+                .data(prestations)
+                .join("div")
+                .attr("class", "prestation");
+
+
+            prestationDivs.append("div")
+                .attr("class", "prestationDescription")
+                .text(d => d.description);
+
+            prestationDivs.append("div")
+                .attr("class", "prestationCount")
+                .text(d => d.count);
+
+            prestationDivs.append("div")
+                .attr("class", "prestationSum")
+                .transition()
+                .style("width", d => d.sum / 3000 + "px")
+                .text(d => d.sum);
+        }
+
+        function draw(root) {
+            prestations = aggregateData2(root.data.prestations);
+            redrawPrestations();
+        }
+        d3.json("http://127.0.0.1:4000/?query={prestations{id description sum count avg}}").then(draw);
+
+    </script>
+    <script>
+        function aggregateData(data) {
+            const aggregated = {};
+            data.forEach(prestation => {
+                const { description, count } = prestation;
+                if (aggregated[description]) {
+                    aggregated[description].count += count;
+                } else {
+                    aggregated[description] = { description, count };
+                }
+            });
+            return Object.values(aggregated);
+        }
+
+        function drawPieChart(root) {
+            const prestations = aggregateData(root.data.prestations);
+            const radius = Math.min(250, 250) / 2;
+            const svg = d3.select("#pieChart");
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+            const pie = d3.pie().value(d => d.count);
+            const data_ready = pie(prestations);
+            const arcGenerator = d3.arc().innerRadius(0).outerRadius(radius);
+            svg.selectAll('path')
+                .data(data_ready)
+                .enter()
+                .append('path')
+                .attr('d', arcGenerator)
+                .attr('fill', d => color(d.data.description))
+                .attr("stroke", "white")
+                .style("stroke-width", "2px");
+
+            const legend = d3.select("#legend");
+            const legendItems = legend.selectAll(".legendItem")
+                .data(prestations)
+                .enter()
+                .append("g")
+                .attr("class", "legendItem")
+                .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+
+            legendItems.append("rect")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", 15)
+                .attr("height", 15)
+                .attr("fill", d => color(d.description));
+
+            legendItems.append("text")
+                .attr("x", 20)
+                .attr("y", 10)
+                .text(d => d.description)
+                .style("font-size", "12px")
+                .attr("alignment-baseline", "middle");
+
+            data_ready.forEach(d => {
+                const [x, y] = arcGenerator.centroid(d);
+                const percentage = ((d.endAngle - d.startAngle) / (2 * Math.PI)) * 100;
+                const label = `${percentage.toFixed(2)}%`;
+
+                svg.append("text")
+                    .attr("text-anchor", "middle")
+                    .attr("x", x * 1.6)
+                    .attr("y", y * 1.6)
+                    .text(label)
+                    .style("fill", "black");
+            });
+        }
+        d3.json("http://127.0.0.1:4000/?query={prestations{id description sum count avg}}").then(drawPieChart);
+
+    </script>
+
+
+    <script>
+        // set the dimensions and margins of the graph
+        const margin = { top: 30, right: 30, bottom: 30, left: 60 },
+            width = 800 - margin.left - margin.right,
+            height = 400 - margin.top - margin.bottom;
+
+        // append the svg object to the body of the page
+        const svg = d3.select("#my_dataviz")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        d3.json("http://127.0.0.1:4000/?query={prestationsByHour{hour count}}").then(function (root) {
+            let data = root.data.prestationsByHour;
+
+            const aggregatedData = {};
+            data.forEach(entry => {
+                if (!aggregatedData[entry.hour]) {
+                    aggregatedData[entry.hour] = 0;
+                }
+                aggregatedData[entry.hour] += entry.count;
+            });
+
+            const aggregatedArray = Object.keys(aggregatedData).map(hour => ({
+                hour,
+                count: aggregatedData[hour]
+            }));
+
+            // X axis
+            const x = d3.scaleBand()
+                .domain(aggregatedArray.map(d => d.hour))
+                .range([0, width])
+                .padding(0.2);
+
+            svg.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll("text")
+                .attr("transform", "translate(-10,0)rotate(-45)")
+                .style("text-anchor", "end");
+
+            // Y axis
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(aggregatedArray, e => e.count)])
+                .nice()
+                .range([height, 0]);
+            svg.append("g")
+                .call(d3.axisLeft(y));
+
+            // Bars
+            svg.selectAll("mybar")
+                .data(aggregatedArray)
+                .join("rect")
+                .attr("x", d => x(d.hour))
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.count))
+                .attr("fill", "#69b3a2")
+                .on("mouseover", function (event, d) {
+                    d3.select(this).attr("fill", "orange"); // Change color on hover
+                    tooltip.style("opacity", 1) // Show tooltip
+                        .html(`<strong>${d.hour} heure(s)</strong><br>Nombre de prestations: ${d.count}`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function () {
+                    d3.select(this).attr("fill", "#69b3a2"); // Revert color on mouseout
+                    tooltip.style("opacity", 0); // Hide tooltip
+                });
+
+
+            const tooltip = d3.select("#my_dataviz")
+                .append("div")
+                .attr("class", "tooltip");
+
+        });
+    </script>
+
+</body>
+
+
+<script>
+    function getMapDpt() {
+        const width = 700, height = 550;
+
+
+        // fortement inspiré de https://www.datavis.fr/d3js/map-population
+        // documentation à https://github.com/d3/d3-geo
+
+        // le générateur de chemin géographique (geographic path generator) 
+        // d3.geoPath est un générateur de forme. Il utilise des données 
+        // GeoJSON qu'il transforme en un chemin SVG
+
+        const path = d3.geoPath();
+
+        // un chemin a besoin d'un type de projection qui définit comment 
+        // des données sphériques sont représentées en deux dimension.
+        // Ici, on utilise la profection conique conforme
+        const projection = d3.geoConicConformal() // Lambert-93
+            .center([2.454071, 46.279229]) // Center on France
+            .scale(2600)
+            .translate([width / 2 - 50, height / 2]);
+
+        path.projection(projection);
+
+        // définition du canvas initial
+        const svg = d3.select('#mapDpt').append("svg")
+            .attr("id", "svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("class", "Blues");
+
+        // on ajoute un élément "departments"    
+        const departments = svg.append("g");
+
+        const formatage = (name) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').replace(/'/g, '').toUpperCase()
+        const departmentSelect = d3.select('#departmentList');
+        // on déclare un tableau de promesses qui vont s'enchaîner
+        var promises = [];
+        promises.push(d3.json('data/departments.json'));
+        promises.push(d3.json("http://127.0.0.1:4000/?query={departments{department name count sum avg}}"));
+
+
+        // lorsque toutes les promesses sont réalisée :
+        Promise.all(promises).then(function (values) {
+            const geojson = values[0]; // Récupération de la première promesse : le contenu du fichier geoJSON
+            console.log("geojson", geojson)
+            let dpts = values[1].data.departments; // Récupération de la deuxième promesse : les ventes par département
+            console.log("departments", dpts)
+
+            dpts = dpts.sort((a, b) => a.name.localeCompare(b.name));
+
+
+            departmentSelect.append('option')
+                .attr('value', '')
+                .text('Veuillez chosir un département');
+
+            dpts.forEach(function (department) {
+                departmentSelect.append('option')
+                    .attr('value', formatage(department.name))
+                    .text(department.name);
+            });
+
+
+            // ajout des chemins de chaque département
+            var features = departments
+                .selectAll("path")
+                .data(geojson.features)
+                .enter()
+                .append("path")
+                .attr('id', function (d) {
+                    return "d" + formatage(d.properties.NOM_DEPT);
+                })
+                .attr("d", path)
+                .attr("class", "department");
+
+
+            // définition de la fonction de transformation de valeur vers l'intervalle [0,1]
+            var quantile = d3.scaleQuantile()
+                .domain([0, d3.max(dpts, e => +e.count)])
+                .range(d3.range(9));
+
+            // ajoute d'un élément SVG pour afficher la légende
+            var legend = svg.append('g')
+                .attr('transform', 'translate(525, 150)')
+                .attr('id', 'legendPie');
+
+            legend.selectAll('.colorbar')
+                .data(d3.range(9))
+                .enter().append('svg:rect')
+                .attr('y', d => d * 20 + 'px')
+                .attr('height', '20px')
+                .attr('width', '20px')
+                .attr('x', '0px')
+                .attr("class", d => "q" + d + "-9")
+
+            var legendScale = d3.scaleLinear()
+                .domain([0, d3.max(dpts, e => +e.count)])
+                .range([0, 9 * 20]);
+            var legendAxis = svg.append("g")
+                .attr('transform', 'translate(550, 150)')
+                .call(d3.axisRight(legendScale).ticks(6));
+
+            dpts.forEach(function (e, i) {
+                d3.select("#d" + formatage(e.name))
+                    .attr("class", d => "department q" + quantile(+e.count) + "-9")
+                    .on("click", function () {
+                        window.location.href = "client_dpt.html?department=" + e.department;
+                    })
+                    .on("mouseover", function (event, d) {
+                        div.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        div.html("<b>Département : </b>" + e.name + "<br>"
+                            + "<b>Nombre d'interventions : </b>" + e.count + "<br>"
+                            + "<b>CA : </b>" + e.sum + "<br>"
+                            + "<b>CA moyen : </b>" + Math.round(e.avg) + "<br>")
+                            .style("left", (event.pageX + 30) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    })
+                    .on("mouseout", function (event, d) {
+                        div.style("opacity", 0);
+                        div.html("")
+                            .style("left", "-500px")
+                            .style("top", "-500px");
+                    });
+            });
+
+            // Refresh colors on combo selection
+            d3.select("select").on("change", function () {
+                d3.selectAll("svg").attr("class", this.value);
+            });
+
+            // Append a DIV for the tooltip
+            var div = d3.select("body").append("div")
+                .attr("class", "chart-tooltip")
+                .style("opacity", 0)
+                .style("height", "80px");
+
+            departmentSelect.on('change', function () {
+                const selectedDepartment = this.value;
+                d3.selectAll(".department").classed("highlighted", false);
+                const selectedPath = d3.select('#d' + selectedDepartment);
+
+                if (selectedPath.node()) {
+                    selectedPath.classed("highlighted", true);
+                }
+            });
+        });
+    }
+
+</script>
+<script>
+    function getMapReg() {
+        const width = 700, height = 550;
+
+        // fortement inspiré de https://www.datavis.fr/d3js/map-population
+        // documentation à https://github.com/d3/d3-geo
+
+        // le générateur de chemin géographique (geographic path generator) 
+        // d3.geoPath est un générateur de forme. Il utilise des données 
+        // GeoJSON qu'il transforme en un chemin SVG
+
+        const path = d3.geoPath();
+
+        // un chemin a besoin d'un type de projection qui définit comment 
+        // des données sphériques sont représentées en deux dimension.
+        // Ici, on utilise la profection conique conforme
+        const projection = d3.geoConicConformal() // Lambert-93
+            .center([2.454071, 46.279229]) // Center on France
+            .scale(2600)
+            .translate([width / 2 - 50, height / 2]);
+
+        path.projection(projection);
+
+        // définition du canvas initial
+        const svg = d3.select('#mapReg').append("svg")
+            .attr("id", "svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("class", "Blues");
+
+        // on ajoute un élément "departments"    
+        const regionsSVG = svg.append("g");
+
+        const formatage = (name) => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-').replace(/'/g, '').toUpperCase()
+        const regionSelect = d3.select('#regionList');
+        // on déclare un tableau de promesses qui vont s'enchaîner
+        var promises = [];
+        promises.push(d3.json('data/regions.json'));
+        promises.push(d3.json("http://127.0.0.1:4000/?query={regions{id name count sum avg}}"));
+
+
+        // lorsque toutes les promesses sont réalisée :
+        Promise.all(promises).then(function (values) {
+            const geojson = values[0]; // Récupération de la première promesse : le contenu du fichier geoJSON
+            console.log("geojson", geojson)
+            let regions = values[1].data.regions; // Récupération de la deuxième promesse : les ventes par département
+            console.log("regions", regions)
+
+            regions = regions.sort((a, b) => a.name.localeCompare(b.name));
+
+
+            regionSelect.append('option')
+                .attr('value', '')
+                .text('Veuillez chosir une région');
+
+            regions.forEach(function (region) {
+                regionSelect.append('option')
+                    .attr('value', formatage(region.name))
+                    .text(region.name);
+            });
+
+
+            // ajout des chemins de chaque département
+            var features = regionsSVG
+                .selectAll("path")
+                .data(geojson.features)
+                .enter()
+                .append("path")
+                .attr('id', function (d) {
+                    return "d" + formatage(d.properties.nom);
+                })
+                .attr('region', function (d) {
+                    return regions[d.properties.nom];
+                })
+                .attr("d", path)
+
+
+            // définition de la fonction de transformation de valeur vers l'intervalle [0,1]
+            var quantile = d3.scaleQuantile()
+                .domain([0, d3.max(regions, e => +e.count)])
+                .range(d3.range(9));
+
+            // ajoute d'un élément SVG pour afficher la légende
+            var legend = svg.append('g')
+                .attr('transform', 'translate(525, 150)')
+                .attr('id', 'legendPie');
+
+            legend.selectAll('.colorbar')
+                .data(d3.range(9))
+                .enter().append('svg:rect')
+                .attr('y', d => d * 20 + 'px')
+                .attr('height', '20px')
+                .attr('width', '20px')
+                .attr('x', '0px')
+                .attr("class", d => "q" + d + "-9")
+
+            var legendScale = d3.scaleLinear()
+                .domain([0, d3.max(regions, e => +e.count)])
+                .range([0, 9 * 20]);
+
+            var legendAxis = svg.append("g")
+                .attr('transform', 'translate(550, 150)')
+                .call(d3.axisRight(legendScale).ticks(6));
+
+            regions.forEach(function (e, i) {
+                d3.select("#d" + formatage(e.name))
+                    .attr("class", d => "department q" + quantile(+e.count) + "-9")
+                    .on("click", function () {
+                        window.location.href = "prestation_region_year.html?region=" + e.id;
+                    })
+                    .on("mouseover", function (event, d) {
+                        div.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        div.html("<b>Région : </b>" + e.name + "<br>"
+                            + "<b>Nombre d'interventions : </b>" + e.count + "<br>"
+                            + "<b>CA : </b>" + e.sum + "<br>"
+                            + "<b>CA moyen : </b>" + Math.round(e.avg) + "<br>")
+                            .style("left", (event.pageX + 30) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    })
+                    .on("mouseout", function (event, d) {
+                        div.style("opacity", 0);
+                        div.html("")
+                            .style("left", "-500px")
+                            .style("top", "-500px");
+                    });
+            });
+        });
+
+        // Refresh colors on combo selection
+        d3.select("select").on("change", function () {
+            d3.selectAll("svg").attr("class", this.value);
+        });
+
+        // Append a DIV for the tooltip
+        var div = d3.select("body").append("div")
+            .attr("class", "chart-tooltip")
+            .style("opacity", 0);
+
+        regionSelect.on('change', function () {
+            const selectedRegion = this.value;
+
+            d3.selectAll("path").classed("highlighted", false);
+
+            const selectedPath = d3.select('#d' + selectedRegion);
+            const selectedDOMElement = selectedPath.node();
+
+            if (selectedDOMElement) {
+                selectedDOMElement.classList.add("highlighted");
+                console.log(selectedDOMElement);
+            }
+        });
+
+
+    }
+
+    getMapDpt()
+    getMapReg()
+
+    function changeMap() {
+        const btnVue = document.getElementById("btnVue");
+        const mapDpt = document.getElementById("mapDpt");
+        const mapReg = document.getElementById("mapReg");
+        const departmentSelect = document.getElementById("departmentList");
+        const regionSelect = document.getElementById("regionList");
+
+        if (mapReg.style.display === "none") {
+            mapReg.style.display = "block";
+            mapDpt.style.display = "none";
+            btnVue.textContent = "Voir les départements";
+            departmentSelect.style.display = "none";
+            regionSelect.style.display = "inline-block";
+        } else {
+            mapReg.style.display = "none";
+            mapDpt.style.display = "block";
+            btnVue.textContent = "Voir les régions";
+            departmentSelect.style.display = "inline-block";
+            regionSelect.style.display = "none";
+        }
+    }
+
+
+
+</script>

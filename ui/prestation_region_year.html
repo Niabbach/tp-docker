@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta name="description" content="Prestations région et année" />
+  <meta charset="utf-8">
+  <title>Nombre et prix moyen des prestations dans une région et une année spécifique</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/d3.min.js"></script>
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 80%;
+      margin: 20px auto;
+    }
+
+    th,
+    td {
+      border: 1px solid #dddddd;
+      text-align: center;
+      padding: 8px;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+
+<body>
+  <!DOCTYPE html>
+  <meta charset="utf-8">
+
+  <!-- Load d3.js -->
+  <script src="https://d3js.org/d3.v4.js"></script>
+  <div style="text-align: center;">
+    <!-- Initialize a select button -->
+    <select id="selectButton"></select>
+  </div>
+  <!-- Create a div where the graph will take place -->
+  <div id="my_dataviz" style="text-align: center;">
+  </div>
+  <p style="text-align: center;" id="descGraph"></p>
+  <br>
+  <br>
+  <!-- Color Scale -->
+  <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const regionCode = parseInt(urlParams.get('region'));
+
+    // set the dimensions and margins of the graph
+    var margin = { top: 10, right: 60, bottom: 30, left: 60 },
+      width = 800 - margin.left - margin.right,
+      height = 500 - margin.top - margin.bottom;
+
+    // append the svg object to the body of the page
+    var svg = d3.select("#my_dataviz")
+      .append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform",
+        "translate(" + margin.left + "," + margin.top + ")");
+
+    //Read the data
+    const url = "http://127.0.0.1:4000/?query={CAByRegion(region: " + regionCode + "){year month name sum}}";
+    d3.json(url, function (response) {
+
+      const data = response.data.CAByRegion.sort(function (a, b) {
+        // Comparaison par année
+        if (a.year !== b.year) {
+          return a.year - b.year;
+        }
+        // Si les années sont égales, comparer par mois
+        return a.month - b.month;
+      });
+      // List of groups (here I have one group per column)
+      var allGroup = [2019, 2020, 2021];
+      document.getElementById("descGraph").textContent = "Chiffre d'affaires par mois pour l'année 2019 en " + data[0].name + "."
+      // add the options to the button
+      d3.select("#selectButton")
+        .selectAll('myOptions')
+        .data(allGroup)
+        .enter()
+        .append('option')
+        .text(function (d) { return d; }) // text showed in the menu
+        .attr("value", function (d) { return d; }); // corresponding value returned by the button
+
+      // Add X axis --> it is a date format
+      var x = d3.scaleLinear()
+        .domain([1, 12])
+        .range([0, width]);
+      svg.append("g")
+        .attr("transform", "translate(0," + height + ")")
+        .call(d3.axisBottom(x));
+      // Add Y axis
+      var y = d3.scaleLinear()
+        .domain([0, 30000])
+        .range([height, 0]);
+      svg.append("g")
+        .call(d3.axisLeft(y));
+
+      var line = svg
+        .append('g')
+        .append("path")
+        .attr("stroke", "black")
+        .style("stroke-width", 4)
+        .style("fill", "none");
+
+      var dot = svg.selectAll('circle');
+
+      function update(selectedGroup) {
+        var filteredData = data.filter(function (obj) {
+          return obj.year == selectedGroup;
+        });
+
+        var uniqueMonths = [...new Set(filteredData.map(item => item.month))];
+
+        var dataFilter = filteredData.map(function (d) {
+          return { year: d.year, month: d.month, value: d.sum };
+        });
+
+        dot.remove();
+
+        dot = svg.selectAll('circle')
+          .data(dataFilter)
+          .enter()
+          .append('circle')
+          .attr("cx", function (d) {
+            if (uniqueMonths.includes(d.month)) {
+              return x(+d.month);
+            }
+          })
+          .attr("cy", function (d) {
+            if (uniqueMonths.includes(d.month)) {
+              return y(+d.value);
+            }
+          })
+          .attr("r", 7)
+          .style("fill", "#69b3a2")
+          .style("display", function (d) {
+            if (uniqueMonths.includes(d.month) && d.year == selectedGroup) {
+              return "block";
+            } else {
+              return "none";
+            }
+          });
+
+        line
+          .datum(dataFilter)
+          .transition()
+          .duration(1000)
+          .attr("d", d3.line()
+            .x(function (d) { return x(+d.month); })
+            .y(function (d) { return y(+d.value); })
+          );
+      }
+
+      d3.select("#selectButton").on("change", function () {
+        var selectedOption = d3.select(this).property("value");
+        update(selectedOption);
+        document.getElementById("descGraph").textContent = "Chiffre d'affaires par mois pour l'année " + selectedOption + " en " + data[0].name + "."
+        fetchPrestationsByYear(regionCode, parseInt(selectedOption)).then(result => {
+          els = document.getElementById("content")
+          els.parentNode.removeChild(els)
+          drawTable(result.root, result.year)
+
+        })
+      });
+
+      // run the updateChart function with this selected option
+      update(allGroup[0]);
+      fetchPrestationsByYear(regionCode, 2019).then(result => {
+        drawTable(result.root, result.year)
+
+      })
+    });
+
+    function fetchPrestationsByYear(regionCode, year) {
+      return new Promise((resolve, reject) => {
+        fetch('http://localhost:4000', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query: `
+                  query($region: Int!, $year: Int!) {
+                    prestationsByRegionAndYear(region: $region, year: $year) { 
+                      description
+                      count
+                      trimester
+                      avg
+                      region
+                      year
+                      r_nom
+                    }
+                  }
+                `,
+            variables: {
+              region: regionCode,
+              year: year,
+            },
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => resolve({ root: data, year: year }))
+          .catch((error) => reject(error));
+      });
+    }
+
+    function drawTable(root, year) {
+      const { prestationsByRegionAndYear } = root.data;
+      const { r_nom } = prestationsByRegionAndYear[0];
+
+      const table = d3.select('body')
+        .append('table')
+        .attr('id', `content`)
+        .style('width', '80%')
+        .style('margin', '20px auto');
+
+      const tableCaption = table.append('caption')
+        .style('caption-side', 'bottom')
+        .text(`Statistiques trimestrielles en ${r_nom} pour l'année ${year}`);
+
+      const tableBody = table.append('tbody');
+
+      const groupedPrestations = groupPrestationsByDescription(prestationsByRegionAndYear);
+
+      const headerRow = tableBody.append('tr');
+      headerRow.append('th').text('Prestations');
+      ['Trimestre 1', 'Trimestre 2', 'Trimestre 3', 'Trimestre 4'].forEach((trimester) => {
+        headerRow.append('th').text(trimester);
+      });
+
+      Object.values(groupedPrestations).forEach((prestation) => {
+        const row = tableBody.append('tr');
+        row.append('td').text(prestation.description);
+        ['trimestre1', 'trimestre2', 'trimestre3', 'trimestre4'].forEach((trimester) => {
+          const trimesterData = prestation[trimester];
+          row.append('td').text(`${trimesterData.count} (count) / ${Math.round(trimesterData.avg * 100) / 100} (Avg)`);
+        });
+      });
+    }
+
+    function groupPrestationsByDescription(prestations) {
+      const groupedPrestations = {};
+      prestations.forEach((prestation) => {
+        if (!groupedPrestations[prestation.description]) {
+          groupedPrestations[prestation.description] = {
+            description: prestation.description,
+            trimestre1: { count: 0, avg: 0 },
+            trimestre2: { count: 0, avg: 0 },
+            trimestre3: { count: 0, avg: 0 },
+            trimestre4: { count: 0, avg: 0 },
+          };
+        }
+        const trimesterData = groupedPrestations[prestation.description][`trimestre${prestation.trimester}`];
+        trimesterData.count = prestation.count;
+        trimesterData.avg = prestation.avg;
+      });
+      return groupedPrestations;
+    }
+  </script>
+
+</body>
+
+</html>

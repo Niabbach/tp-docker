@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8">
+    <!-- Load d3.js -->
+    <script src="js/d3.min.js"></script>
+    <style>
+        .tooltip {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ddd;
+            padding: 5px;
+            pointer-events: none;
+            opacity: 0;
+        }
+        #container {
+            text-align: center;
+        }
+
+        #my_dataviz {
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+        <h3>Nombre de prestations par heure</h3>
+
+        <!-- Create a div where the graph will take place -->
+        <div id="my_dataviz"></div>
+    </div>
+
+    <script>
+        // set the dimensions and margins of the graph
+        const margin = { top: 30, right: 30, bottom: 70, left: 60 },
+            width = 460 - margin.left - margin.right,
+            height = 400 - margin.top - margin.bottom;
+
+        // append the svg object to the body of the page
+        const svg = d3.select("#my_dataviz")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        d3.json("http://127.0.0.1:4000/?query={prestationsByHour{hour count}}").then(function (root) {
+            let data = root.data.prestationsByHour;
+
+            const aggregatedData = {};
+            data.forEach(entry => {
+                if (!aggregatedData[entry.hour]) {
+                    aggregatedData[entry.hour] = 0;
+                }
+                aggregatedData[entry.hour] += entry.count;
+            });
+
+            const aggregatedArray = Object.keys(aggregatedData).map(hour => ({
+                hour,
+                count: aggregatedData[hour]
+            }));
+
+            // X axis
+            const x = d3.scaleBand()
+                .domain(aggregatedArray.map(d => d.hour))
+                .range([0, width])
+                .padding(0.2);
+
+            svg.append("g")
+                .attr("transform", `translate(0, ${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll("text")
+                .attr("transform", "translate(-10,0)rotate(-45)")
+                .style("text-anchor", "end");
+
+            // Y axis
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(aggregatedArray, e => e.count)])
+                .nice()
+                .range([height, 0]);
+            svg.append("g")
+                .call(d3.axisLeft(y));
+
+            // Bars
+            svg.selectAll("mybar")
+                .data(aggregatedArray)
+                .join("rect")
+                .attr("x", d => x(d.hour))
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.count))
+                .attr("fill", "#69b3a2")
+                .on("mouseover", function (event, d) {
+                    d3.select(this).attr("fill", "orange"); // Change color on hover
+                    tooltip.style("opacity", 1) // Show tooltip
+                        .html(`<strong>${d.hour} heure(s)</strong><br>Nombre de prestations: ${d.count}`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 20) + "px");
+                })
+                .on("mouseout", function () {
+                    d3.select(this).attr("fill", "#69b3a2"); // Revert color on mouseout
+                    tooltip.style("opacity", 0); // Hide tooltip
+                });
+
+            
+            const tooltip = d3.select("#my_dataviz")
+                .append("div")
+                .attr("class", "tooltip");
+
+        });
+    </script>
+
+</body>
+
+</html>

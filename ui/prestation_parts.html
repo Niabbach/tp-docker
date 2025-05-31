@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta name="description" content="Pourcentages des prestations" />
+  <meta charset="utf-8">
+  <title>Pourcentages des prestations</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+
+<body>
+
+  <svg width="100%" height="600">
+    <text x="50%" y="30" text-anchor="middle" font-size="24px" fill="black" id="title"></text>
+    <g transform="translate(300, 300)" id="pieChart"></g>
+    <g transform="translate(50, 100)" id="legend"></g>
+  </svg>
+
+  <script>
+
+  function drawPieChart(root, selectedDescription, selectedDepartment, departmentName) {
+      if (!root || !root.data || !root.data.prestations || !Array.isArray(root.data.prestations)) {
+        console.error("Les données obtenues ne sont pas valides.");
+        return;
+      }
+
+      const prestations = root.data.prestations;
+      const total = prestations.reduce((acc, prestation) => acc + prestation.count, 0);
+      const selectedPrestation = prestations.find(prestation => prestation.description === selectedDescription);
+
+      const restOfPrestationsTotal = total - (selectedPrestation ? selectedPrestation.count : 0);
+      const dataForSelectedDescription = [{
+        description: selectedDescription,
+        count: selectedPrestation ? selectedPrestation.count : 0,
+        percentage: (selectedPrestation ? (selectedPrestation.count / total) * 100 : 0)
+      }];
+
+      const dataForRestOfPrestations = [{
+        description: 'Reste des prestations',
+        count: restOfPrestationsTotal,
+        percentage: (restOfPrestationsTotal / total) * 100
+      }];
+
+      const combinedData = [...dataForSelectedDescription, ...dataForRestOfPrestations];
+
+      const radius = Math.min(250, 250) / 2;
+
+      const svg = d3.select("#pieChart");
+      const color = d3.scaleOrdinal(d3.schemeCategory10);
+      const pie = d3.pie().value(d => d.count);
+      const data_ready = pie(combinedData);
+      const arcGenerator = d3.arc().innerRadius(0).outerRadius(radius);
+
+      svg.selectAll("*").remove();
+
+      svg.selectAll('path')
+        .data(data_ready)
+        .enter()
+        .append('path')
+        .attr('d', arcGenerator)
+        .attr('fill', (d, i) => i === 0 ? 'red' : color(d.data.description))
+        .attr("stroke", "white")
+        .style("stroke-width", "2px");
+
+      // Titre
+      const title = d3.select("#title");
+      title.text(`Pourcentage des  prestations ${selectedDescription} réalisée dans le département ${department}`);
+
+      // Code pour générer la légende du camembert avec les pourcentages
+      const legend = d3.select("#legend");
+
+      const legendItems = legend.selectAll("legendItem")
+        .data(data_ready)
+        .enter().append("g")
+        .attr("class", "legendItem")
+        .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+
+      legendItems.append("rect")
+        .attr("x", 0)
+        .attr("y", -12)
+        .attr("width", 10)
+        .attr("height", 10)
+        .attr("fill", (d, i) => i === 0 ? 'red' : color(d.data.description));
+
+      legendItems.append("text")
+        .attr("x", 15)
+        .attr("y", 0)
+        .text(d => `${d.data.description} - ${d.data.percentage.toFixed(2)}%`)
+        .attr("dy", "0.5ex");
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const department = urlParams.get('department');
+    const selectedDescription = urlParams.get('description');
+
+    d3.json(`http://127.0.0.1:4000/?query={prestationsByDpt(department: "${department}" ){id description sum count avg}}`)
+      .then(data => {
+        if (data && data.data && Array.isArray(data.data.prestationsByDpt)) {
+          const prestations = data.data.prestationsByDpt.map(entry => ({
+            description: entry.description,
+            count: entry.count
+          }));
+
+          const formattedData = {
+            data: {
+              prestations: prestations
+            }
+          };
+
+          drawPieChart(formattedData, selectedDescription, department);
+        } 
+      })
+  </script>
+
+</body>
+
+</html>

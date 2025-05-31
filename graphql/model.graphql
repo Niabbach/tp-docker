@@ -1,0 +1,64 @@
+type Prestation {
+  id: Int
+  description: String
+  sum: Int
+  count: Int
+  avg: Float
+  year: Int
+  trimester: Int
+  region: Int
+  r_nom: String
+  department: String
+}
+
+type Region {
+  id: Int
+  name: String
+  year: Int
+  month: Int
+  sum: Int
+  count: Int
+  avg: Float
+}
+
+type Department {
+  department: Int
+  name: String
+  sum: Int
+  count: Int
+  avg: Float
+}
+
+type Hour {
+  hour: String
+  sum: Int
+  count: Int
+  avg: Float
+}
+
+type Client{
+  id: Int
+  firstname: String
+  lastname: String
+  description: String
+  street: String
+  cli_city: String
+  pre_city: String
+  zip: Int
+  pre_zip: Int
+  department: Int
+  d_name: String
+  date: String
+  price: Int
+}
+
+type Query {
+  prestations: [Prestation]
+  departments: [Department]
+  regions: [Region]
+  prestationsByHour: [Hour]
+  CAByRegion(region: Int): [Region]
+  prestationsByRegionAndYear(region: Int, year: Int): [Prestation]
+  clientByDepartment(department: Int): [Client]
+  prestationsByDpt(department: String): [Prestation]
+}

@@ -1,0 +1,145 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+  <meta name="description" content="Informations client"/>
+  <meta charset="utf-8">
+  <title> Clients</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="">
+  <script src="js/d3.min.js"></script>
+  
+  <style>
+    table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border: 1px solid black;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="table-container"></div>
+
+  <script>
+    const urlParams = new URLSearchParams(window.location.search);
+    const departmentCode = urlParams.get('department');
+    
+   document.addEventListener("DOMContentLoaded", function () {
+  const urlParams = new URLSearchParams(window.location.search);
+  const departmentCode = urlParams.get('department');
+  
+  const url = "http://127.0.0.1:4000/?query={clientByDepartment(department: " + departmentCode + "){firstname lastname street cli_city zip pre_city description date price d_name}}";
+  
+  d3.json(url)
+    .then(response => {
+      const data = response.data;
+
+      if (data && data.clientByDepartment) {
+        const clientsByDepartment = data.clientByDepartment;
+
+        const uniqueCities = [...new Set(clientsByDepartment.map(item => item.pre_city))];
+        const uniqueDescriptions = [...new Set(clientsByDepartment.map(item => item.description))];
+
+        const tableContainer = document.getElementById("table-container");
+        const table = document.createElement("table");
+        const headerRow = table.createTHead().insertRow();
+        const headers = ["Prénom", "Nom", "Rue Client", "Ville Client", "Code postal Client", "Ville Intervention", "Description", "Prix", "Date"];
+
+        headers.forEach(headerText => {
+          const th = document.createElement("th");
+          const text = document.createTextNode(headerText);
+          th.appendChild(text);
+          headerRow.appendChild(th);
+        });
+
+        const filters = {
+          ville: '',
+          description: ''
+        };
+
+        function createRow(client) {
+          const row = table.insertRow();
+          const values = [
+            client.firstname,
+            client.lastname,
+            client.street,
+            client.cli_city,
+            client.zip,
+            client.pre_city,
+            client.description,
+            client.price,
+            client.date
+          ];
+
+          values.forEach((value, index) => {
+            const cell = row.insertCell();
+            const text = document.createTextNode(value);
+            if (index === 6) { 
+              const link = document.createElement('a');
+              link.appendChild(text);
+              const departmentName = client.d_name;
+              link.href = `prestation_parts.html?department=${encodeURIComponent(departmentName)}&description=${encodeURIComponent(value)}`;
+              cell.appendChild(link);
+            } else {
+              cell.appendChild(text);
+            }
+          });
+        }
+
+        clientsByDepartment.forEach(client => createRow(client));
+
+        tableContainer.appendChild(table);
+
+        const selectCity = createFilterSelect(uniqueCities, "Toutes les villes", "Ville Intervention", (value) => {
+          filters.ville = value;
+          filterTable();
+        });
+
+        const selectDesc = createFilterSelect(uniqueDescriptions, "Toutes les descriptions", "Description", (value) => {
+          filters.description = value;
+          filterTable();
+        });
+
+        headerRow.cells[5].appendChild(selectCity);
+        headerRow.cells[6].appendChild(selectDesc);
+
+        function createFilterSelect(options, defaultText, filterName, changeCallback) {
+          const select = document.createElement("select");
+          select.innerHTML = `<option value="">${defaultText}</option>` + options.map(option => `<option value="${option}">${option}</option>`).join('');
+          select.addEventListener('change', function () {
+            changeCallback(this.value);
+          });
+          return select;
+        }
+
+        function filterTable() {
+          const rows = table.getElementsByTagName('tr');
+          for (let i = 1; i < rows.length; i++) {
+            const city = rows[i].cells[5].textContent;
+            const description = rows[i].cells[6].textContent;
+            rows[i].style.display =
+              (filters.ville === '' || filters.ville === city) &&
+              (filters.description === '' || filters.description === description)
+                ? ''
+                : 'none';
+          }
+        }
+      }
+    });
+});
+  </script>
+</body>
+
+</html>
